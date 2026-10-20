@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Prototype</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Low-fidelity wireframe: header with who's who, two boxed columns (record / listen), study log. */
+:root{--bg:#FFFFFF;--ink:#1E1E1E;--muted:#8A8A8A;--line:#1E1E1E;--fill:#EFEFEF;--soft:#F7F7F7;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;color-scheme:light}
+@media (prefers-color-scheme: dark){:root{--bg:#161616;--ink:#E6E6E6;--muted:#8C8C8C;--line:#E6E6E6;--fill:#2A2A2A;--soft:#1E1E1E;color-scheme:dark}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:14px;line-height:1.45}
+.wrap{max-width:880px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 48px;display:flex;flex-direction:column;gap:20px}
+h1{font-size:20px;font-weight:600;margin:0}
+h2{font-size:14px;font-weight:600;margin:0;text-transform:uppercase;letter-spacing:.06em}
+p{margin:0}
+.muted,.note{color:var(--muted)}
+.note{font-size:12px}
+button{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);padding:6px 12px;cursor:pointer;border-radius:0}
+button:hover:not(:disabled){background:var(--fill)}
+button:disabled{border-style:dashed;color:var(--muted);cursor:default}
+button:focus-visible,input:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+input[type=text]{font:inherit;padding:6px 8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:0;width:100%}
+label{display:flex;flex-direction:column;gap:4px;font-size:12px}
+.box{border:1px solid var(--line);padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:640px){.cols{grid-template-columns:1fr}}
+.row{border:1px solid var(--line);padding:10px;display:flex;flex-direction:column;gap:8px}
+.row.locked,.row.future{border-style:dashed;color:var(--muted)}
+.row.current{background:var(--soft);border-width:2px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.rec{display:flex;flex-direction:column;gap:8px;border-top:1px dashed var(--line);padding-top:8px}
+.rec input[type=file]{font:inherit;font-size:12px;max-width:100%}
+audio{width:100%;height:36px}
+.tag{font-size:11px;border:1px solid currentColor;padding:0 4px}
+.days{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.days button{padding:6px 2px;font-size:12px}
+.days button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid var(--line);padding:6px 8px;text-align:left}
+th{background:var(--fill);font-weight:600}
+.tablebox{overflow-x:auto}
+.invite{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.invite code{border:1px dashed var(--line);padding:4px 6px;overflow-wrap:anywhere;flex:1 1 220px;font-family:var(--mono);font-size:12px}
+.err{border:1px solid var(--ink);padding:8px;background:var(--fill)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:8px 14px;font-size:13px;max-width:calc(100% - 32px)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>[ Prototype ]</h1>
+
+  <!-- 1. Missing config -->
+  <div class="box" id="vSetup" hidden>
+    <h2>Setup needed</h2>
+    <p>The server didn't respond. Check that the site was deployed from GitHub on Netlify (not Netlify Drop), then reload.</p>
+  </div>
+
+  <!-- 2. Create a couple space -->
+  <div class="box" id="vStart" hidden>
+    <h2>Start your space</h2>
+    <p class="muted">Study week: Tue Oct 20 – Sat Oct 24. Each day you both record one note for each other.</p>
+    <label>Your name<input type="text" id="nameMe" maxlength="24" placeholder="e.g. Kai"></label>
+    <label>Your partner's name<input type="text" id="nameThem" maxlength="24" placeholder="e.g. Sam"></label>
+    <div class="actions"><button id="createBtn">Create and get invite link</button></div>
+  </div>
+
+  <!-- 3. Pick who you are -->
+  <div class="box" id="vPick" hidden>
+    <h2>Who are you?</h2>
+    <p class="muted">Pick your name. This phone will remember it.</p>
+    <div class="actions" id="pickBtns"></div>
+  </div>
+
+  <!-- 4. Main -->
+  <div id="vMain" hidden style="display:flex;flex-direction:column;gap:20px">
+    <div class="box">
+      <div class="top"><span>You: <b id="meName"></b> · Partner: <b id="themName"></b></span><span class="note" id="todayLbl"></span></div>
+      <div class="invite"><code id="inviteLink"></code><button id="copyBtn">Copy invite link</button></div>
+      <p class="note">Send this link to your partner. They open it and pick their name.</p>
+      <div id="testBar" hidden>
+        <p class="note" style="margin-bottom:6px">Test mode, pretend today is:</p>
+        <div class="days" id="days"></div>
+      </div>
+    </div>
+
+    <div class="cols">
+      <div class="box">
+        <h2>Your notes · Record</h2>
+        <p class="note">Record one note each day. You can only record on that day.</p>
+        <div id="mine"></div>
+      </div>
+      <div class="box">
+        <h2><span id="themName2"></span>'s notes · Listen</h2>
+        <p class="note">Their note for each day shows up here on that day.</p>
+        <div id="theirs"></div>
+      </div>
+    </div>
+
+    <div class="box">
+      <h2>Study log</h2>
+      <div class="tablebox"><table>
+        <thead><tr><th>Day</th><th id="thA"></th><th id="thB"></th></tr></thead>
+        <tbody id="log"></tbody>
+      </table></div>
+      <p class="note">Each cell: recorded / listened to by partner.</p>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/* ====== STUDY SETTINGS ====== */
+const STUDY_DAYS = ["2026-10-20","2026-10-21","2026-10-22","2026-10-23","2026-10-24"];
+const MAX_SECONDS = 180; // longest recording allowed
+
+(function(){
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pad=n=>String(n).padStart(2,'0');
+const iso=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const parse=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)};
+const label=s=>parse(s).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+const show=id=>['vSetup','vStart','vPick','vMain'].forEach(v=>$(v).hidden=(v!==id));
+let toastT; const toast=m=>{const t=$('toast');t.textContent=m;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,2500)};
+const ls={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
+async function api(path,opts){
+  const r=await fetch('/api/'+path,opts);
+  let body=null; try{ body=await r.json(); }catch(e){}
+  if(!r.ok) throw new Error((body&&body.error)||('Server error '+r.status));
+  return body;
+}
+
+const params=new URLSearchParams(location.search);
+const testMode=params.get('test')==='1';
+let today=iso(new Date());
+let code=params.get('c'), couple=null, me=null, notes={}, lastJson='';
+let openRec=null, recorder=null, stream=null, chunks=[], startT=0, tick=null, pending=null;
+let dirty=false;
+const audioUrls={}; // note id + sent time -> object URL
+
+/* ---------- start / join ---------- */
+if(!code){
+  show('vStart');
+  $('createBtn').onclick=async()=>{
+    const a=$('nameMe').value.trim(), b=$('nameThem').value.trim();
+    if(!a||!b){toast('Enter both names');return;}
+    $('createBtn').disabled=true;
+    try{
+      const r=await api('couple',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({a,b})});
+      code=r.code; ls.set('proto-'+code,'a');
+      history.replaceState(null,'',`?c=${code}${testMode?'&test=1':''}`);
+      boot();
+    }catch(e){ $('createBtn').disabled=false; show('vSetup'); }
+  };
+}else boot();
+
+async function boot(){
+  try{ couple=await api('couple/'+code); }
+  catch(e){
+    show('vSetup');
+    $('vSetup').innerHTML='<h2>Link not found</h2><p>This invite link doesn\'t match a space. Check the link, or open the site without it to start a new one.</p>';
+    return;
+  }
+  me=ls.get('proto-'+code);
+  if(me!=='a'&&me!=='b'){
+    show('vPick');
+    $('pickBtns').innerHTML=`<button data-pick="a">I'm ${esc(couple.a)}</button><button data-pick="b">I'm ${esc(couple.b)}</button>`;
+    return;
+  }
+  startMain();
+}
+let mainStarted=false;
+async function startMain(){
+  show('vMain');
+  if(mainStarted){render(true);return;}
+  mainStarted=true;
+  if(testMode){ $('testBar').hidden=false; if(!STUDY_DAYS.includes(today)) today=STUDY_DAYS[0]; }
+  render(true);
+  await refresh();
+  setInterval(refresh,5000);
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refresh(); });
+}
+async function refresh(){
+  try{
+    const list=await api('notes/'+code);
+    const j=JSON.stringify(list);
+    if(j===lastJson) return;
+    lastJson=j; notes={}; list.forEach(n=>notes[n.id]=n); render();
+  }catch(e){}
+}
+const them=()=>me==='a'?'b':'a';
+const nm=w=>couple?couple[w]:'';
+
+async function loadAudio(el,n){
+  const k=n.id+'@'+n.sent;
+  if(!audioUrls[k]){
+    try{ const r=await fetch(`/api/audio/${code}/${n.id}`); if(!r.ok) throw 0; audioUrls[k]=URL.createObjectURL(await r.blob()); }
+    catch(e){ return; }
+  }
+  if(el.isConnected) el.src=audioUrls[k];
+}
+
+/* ---------- render ---------- */
+function render(force){
+  if(!force){
+    const playing=[...document.querySelectorAll('audio')].some(a=>!a.paused);
+    if(playing||openRec){ dirty=true; renderLog(); return; }
+  }
+  dirty=false;
+  $('meName').textContent=nm(me); $('themName').textContent=nm(them()); $('themName2').textContent=nm(them());
+  $('todayLbl').textContent='Today: '+label(today);
+  $('inviteLink').textContent=location.origin+location.pathname+'?c='+code;
+  if(testMode) $('days').innerHTML=STUDY_DAYS.map(d=>`<button data-day="${d}" aria-pressed="${d===today}">${label(d)}</button>`).join('');
+
+  $('mine').innerHTML=STUDY_DAYS.map(d=>{
+    const n=notes[`${d}_${me}`], now=d===today, past=d<today;
+    let body;
+    if(now&&openRec===d) body=recUI();
+    else if(n) body=`<p>"${esc(n.title)}"</p><audio controls data-src="${n.id}"></audio>
+      <p class="note">${n.heard?esc(nm(them()))+' listened ✓':'Not heard yet'}</p>
+      ${now?`<div class="actions"><button data-rec="${d}">Re-record</button></div>`:''}`;
+    else if(now) body=`<div class="actions"><button data-rec="${d}">● Record today's note</button></div>`;
+    else if(past) body=`<p class="muted">— missed</p>`;
+    else body=`<p>Opens ${label(d)}</p>`;
+    return `<div class="row ${now?'current':d>today?'future':''}"><div class="top"><span>${label(d)}</span>${n?'<span class="tag">sent</span>':now?'<span class="tag">today</span>':''}</div>${body}</div>`;
+  }).join('');
+
+  $('theirs').innerHTML=STUDY_DAYS.map(d=>{
+    const n=notes[`${d}_${them()}`], now=d===today;
+    if(d>today) return `<div class="row locked"><div class="top"><span>${label(d)}</span><span class="tag">locked</span></div><p>Unlocks ${label(d)}</p></div>`;
+    if(!n) return `<div class="row ${now?'current':''}"><div class="top"><span>${label(d)}</span></div><p class="muted">${now?'Waiting for '+esc(nm(them()))+'\'s note…':'— no note'}</p></div>`;
+    return `<div class="row ${now?'current':''}"><div class="top"><span>${label(d)}</span><span class="tag">${n.heard?'heard':'new'}</span></div>
+      <p>"${esc(n.title)}"</p><audio controls data-src="${n.id}" data-listen="${n.id}"></audio></div>`;
+  }).join('');
+
+  document.querySelectorAll('audio[data-src]').forEach(a=>{ const n=notes[a.dataset.src]; if(n) loadAudio(a,n); });
+  document.querySelectorAll('audio[data-listen]').forEach(a=>a.addEventListener('play',()=>{
+    const n=notes[a.dataset.listen];
+    if(n&&!n.heard){ n.heard=true; api(`heard/${code}/${n.id}`,{method:'POST'}).catch(()=>{}); renderLog(); }
+  }));
+  renderLog();
+}
+function renderLog(){
+  if(!couple) return;
+  $('thA').textContent=couple.a; $('thB').textContent=couple.b;
+  const cell=(d,w)=>{const n=notes[`${d}_${w}`]; if(n) return 'sent'+(n.heard?' / heard ✓':' / not heard'); return d<today?'missed':d===today?'…':'';};
+  $('log').innerHTML=STUDY_DAYS.map(d=>`<tr><td>${label(d)}</td><td>${cell(d,'a')}</td><td>${cell(d,'b')}</td></tr>`).join('');
+}
+document.addEventListener('pause',()=>{ if(dirty&&!openRec) render(); },true);
+document.addEventListener('ended',()=>{ if(dirty&&!openRec) render(); },true);
+
+/* ---------- recorder ---------- */
+function recUI(){
+  return `<div class="rec">
+    <div class="actions"><button id="recBtn">● Start</button><span id="recTime">0:00</span><span class="note">max ${MAX_SECONDS/60} min</span></div>
+    <div id="fallback" hidden class="err"><p class="note">Microphone blocked. Allow microphone access for this site in your browser settings and tap Start again, or upload a voice memo:</p><input type="file" id="fileIn" accept="audio/*"></div>
+    <audio id="preview" controls hidden></audio>
+    <input id="titleIn" type="text" maxlength="60" placeholder="Title (optional)">
+    <div class="actions"><button id="saveBtn" disabled>Send to ${esc(nm(them()))}</button><button id="cancelBtn">Cancel</button></div>
+  </div>`;
+}
+function stopAll(){
+  if(recorder&&recorder.state==='recording'){recorder.onstop=null;recorder.stop();}
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  clearInterval(tick); recorder=null; stream=null; pending=null;
+}
+function setPending(blob){
+  if(blob.size>5_000_000){ toast('That file is too big. Keep recordings under about 3 minutes.'); return; }
+  pending=blob; const p=$('preview'); p.src=URL.createObjectURL(blob); p.hidden=false; $('saveBtn').disabled=false;
+}
+function pickMime(){
+  // mp4 plays on iPhones and Android; fall back to whatever the browser makes
+  for(const t of ['audio/mp4','audio/webm;codecs=opus','audio/webm']) if(window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t)) return t;
+  return '';
+}
+async function toggleRec(){
+  if(recorder&&recorder.state==='recording'){recorder.stop();return;}
+  try{ if(!navigator.mediaDevices||!window.MediaRecorder) throw 0; stream=await navigator.mediaDevices.getUserMedia({audio:true}); }
+  catch(e){ $('fallback').hidden=false; return; }
+  chunks=[];
+  const mime=pickMime();
+  try{ recorder=new MediaRecorder(stream,mime?{mimeType:mime,audioBitsPerSecond:64000}:{}); }catch(e){ recorder=new MediaRecorder(stream); }
+  recorder.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+  recorder.onstop=()=>{clearInterval(tick);if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('recBtn').textContent='● Re-record';
+    setPending(new Blob(chunks,{type:(recorder.mimeType||mime||'audio/webm').split(';')[0]}));};
+  recorder.start(); startT=Date.now(); $('recBtn').textContent='■ Stop';
+  tick=setInterval(()=>{const s=Math.floor((Date.now()-startT)/1000);$('recTime').textContent=`${Math.floor(s/60)}:${pad(s%60)}`; if(s>=MAX_SECONDS) recorder.stop();},250);
+}
+async function send(){
+  if(!pending) return;
+  const id=`${openRec}_${me}`;
+  const title=$('titleIn').value.trim()||'Note for '+label(openRec);
+  $('saveBtn').disabled=true; $('saveBtn').textContent='Sending…';
+  try{
+    const m=await api(`notes/${code}/${id}`,{method:'PUT',headers:{'content-type':pending.type||'audio/webm','x-title':encodeURIComponent(title)},body:pending});
+    notes[m.id]=m; lastJson='';
+    stopAll(); openRec=null; render(true); toast('Sent to '+nm(them()));
+  }catch(e){ $('saveBtn').disabled=false; $('saveBtn').textContent='Send to '+nm(them()); toast('Could not send: '+e.message); }
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  if(b.dataset.pick){ me=b.dataset.pick; ls.set('proto-'+code,me); startMain(); return; }
+  if(b.dataset.day){ stopAll(); openRec=null; today=b.dataset.day; render(true); return; }
+  if(b.dataset.rec){ stopAll(); openRec=b.dataset.rec; render(true); return; }
+  if(b.id==='recBtn'){ toggleRec(); return; }
+  if(b.id==='cancelBtn'){ stopAll(); openRec=null; render(true); return; }
+  if(b.id==='saveBtn'){ send(); return; }
+  if(b.id==='copyBtn'){
+    const t=$('inviteLink').textContent;
+    navigator.clipboard.writeText(t).then(()=>toast('Invite link copied')).catch(()=>{const r=document.createRange();r.selectNodeContents($('inviteLink'));const s=getSelection();s.removeAllRanges();s.addRange(r);toast('Link selected, copy it');});
+  }
+});
+document.addEventListener('change',e=>{ if(e.target.id==='fileIn'&&e.target.files[0]) setPending(e.target.files[0]); });
+})();
+</script>
+</body>
+</html>
